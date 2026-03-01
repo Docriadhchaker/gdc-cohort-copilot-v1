@@ -1,14 +1,53 @@
 # GDC Cohort Copilot (v1)
 
-Create cohorts and run basic clinical summaries from the [NCI GDC API](https://api.gdc.cancer.gov).
+**Create and explore TCGA cohorts from the NCI GDC with one-click summaries, survival curves, and exports.**
 
-**Constraints:** No Postgres, Docker, Drizzle, or ORM. Data is stored only as JSON files in the local `data/` folder (gitignored). All numbers come from real GDC API responses; no mock data.
+- **Cohort snapshots** — Define cohorts by cancer profile (BRCA, LUAD, COAD, and 15+ TCGA projects) plus optional filters (stage, gender); store as JSON under `data/`.
+- **Cohort Summary** — Gender and stage distribution, missingness; canonical stage (pathologic → clinical → tumor) so filter and summary match.
+- **Survival Pack** — Kaplan–Meier overall survival; optional stratification by gender or stage with log-rank p-value.
+- **Exports** — Case IDs as CSV; GDC files manifest (TSV) for RNA-seq, somatic mutations, WXS.
+- **Report** — Manual generation only: Markdown + printable HTML from latest artifacts (cohort, summary, survival, manifest); lists artifacts included.
 
-## Setup
+**Disclaimer:** For **exploratory research use only**. Not for clinical or regulatory use.
 
-**Requirements:** Node.js 18+ and npm.
+---
 
-On **Windows PowerShell** (exact commands):
+## 🎯 Who it's for
+
+- Researchers and clinician-scientists exploring TCGA/GDC cohorts.
+- Students learning cohort definition and survival analysis.
+- Anyone who needs reproducible, artifact-based workflows without a database.
+
+## 💡 Why it exists
+
+- **Pain points:** Ad-hoc GDC queries are hard to reproduce; stage fields differ across endpoints; survival data is spread across demographic and diagnoses.
+- **Reproducibility:** Cohorts and runs are stored as JSON/TSV under `data/`; the report lists exactly which artifacts were used.
+- **Canonical stage:** One rule (pathologic → clinical → tumor) for both filtering and summary so “Stage IIB” in the filter matches the summary table.
+- **No DB:** v1 stays minimal—no Postgres, Docker, or ORM; all data from the public GDC API and local files.
+
+## 🚀 What's included in v1
+
+- 17+ TCGA profiles (BRCA, LUAD, COAD, LUSC, etc.) in `profiles/*.json`; extend by adding a JSON file.
+- Profile search above the dropdown (filter by name or description).
+- Create Cohort → Run Cohort Summary → Run Survival Pack (optional) → Export (CSV/TSV) → Generate Report (manual).
+- Stage options from GDC (exact stage dropdown + stage group I/II/III/IV).
+- GET /api/health, GET /api/profiles, GET /api/stage-options, POST /api/cohorts, POST /api/cohorts/:id/summary, POST /api/cohorts/:id/survival, export and report endpoints (see API section).
+
+## 🖼️ Screenshots
+
+*Add `ui-overview.png` and `ui-survival.png` into `docs/images/` to display them below.*
+
+**Dashboard (controls + cohort + summary)**
+
+![Dashboard overview](docs/images/ui-overview.png)
+
+**Survival (Kaplan–Meier curve and metrics)**
+
+![Survival pack](docs/images/ui-survival.png)
+
+## 🧪 Quick start
+
+**Requirements:** Node.js 18+, npm. Windows PowerShell:
 
 ```powershell
 cd gdc-cohort-copilot-v1
@@ -16,201 +55,91 @@ npm install
 npm run dev
 ```
 
-Then open **http://localhost:3000** in your browser. The API is available at the same host under `/api` (e.g. http://localhost:3000/api/profiles). Host is **localhost** only.
-
-**Default ports:** UI = 3000, API = 3001. If the API port is already in use (EADDRINUSE), set a different one and restart:
+Open **http://localhost:3000**. UI runs on port 3000; API on 3001 (configurable via `API_PORT`). If the API port is in use:
 
 ```powershell
 $env:API_PORT=3002; npm run dev
 ```
 
-Then use http://localhost:3000 in the browser; the UI proxy will send `/api` requests to the chosen API port.
+**Verify:** `Invoke-RestMethod -Uri "http://localhost:3000/api/health"` → `ok: true`. `Invoke-RestMethod -Uri "http://localhost:3000/api/profiles"` → list of profiles.
 
-## Verify running
+## 🔐 Data access & privacy
 
-After `npm run dev`, you should see both processes and the Local URL:
+- All cohort and summary data comes from the **public NCI GDC API** (https://api.gdc.cancer.gov). No patient-identifying data is stored; only case_ids, counts, and aggregate stats.
+- **No database:** Snapshots, summaries, survival JSON, manifests, and reports are stored under `data/` (gitignored).
+- **Files manifest:** Use “Export files manifest” to get a TSV of GDC file_ids for your cohort; use GDC’s gdc-client or portal to download files (open/controlled as per GDC).
 
-- **Expected terminal output:**  
-  `[vite]` lines with **Local: http://localhost:3000/** and `[api]` lines with **UI: http://localhost:3000** and **API: http://localhost:3001** (or your `API_PORT`). If either process exits, the other is killed and the script exits so the error is visible.
+## 🧱 How it works
 
-- **Check ports are LISTENING (PowerShell):**
+1. **Profile** — Pick a TCGA project (e.g. BRCA) from `profiles/`; optionally filter by stage (exact or group) and gender.
+2. **Cohort snapshot** — POST /api/cohorts queries GDC and saves `data/<id>.json` with case_ids.
+3. **Artifacts** — Summary, survival, and manifest are optional; each writes to `data/<id>_summary.json`, `data/<id>_survival.json`, `data/<id>_manifest.tsv`.
+4. **Report** — Click “Generate Report” to rebuild from disk; writes `data/<id>_report.md` and `data/<id>_report.html` and lists artifacts included.
 
-```powershell
-netstat -an | findstr "3000 3001"
-```
+## 🔌 API endpoints
 
-You should see `LISTENING` for `[::1]:3000` and `[::1]:3001` (or `0.0.0.0:3000` / `0.0.0.0:3001`). If you only see SYN_SENT or nothing for 3000, Vite is not running.
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| GET | /api/health | Health check |
+| GET | /api/profiles | Profiles (sorted by name) |
+| GET | /api/stage-options?profileKey=... | Stage options for profile |
+| POST | /api/cohorts | Create cohort |
+| POST | /api/cohorts/:id/summary | Cohort summary |
+| POST | /api/cohorts/:id/survival | Survival Pack (KM + optional stratification) |
+| GET | /api/cohorts/:id/export/case_ids.csv | Export case IDs CSV |
+| POST | /api/cohorts/:id/export/files-manifest | Export files manifest TSV |
+| POST | /api/cohorts/:id/report | Generate report (rebuild from artifacts) |
+| GET | /api/cohorts/:id/report.md | Download report Markdown |
+| GET | /api/cohorts/:id/report.html | Preview report HTML |
 
-- **Quick API tests:**
+See **Detailed API** below for request/response details.
 
-```powershell
-Invoke-RestMethod -Uri "http://localhost:3000/api/health"
-# Expect: ok = True
+## 📦 Exports
 
-Invoke-RestMethod -Uri "http://localhost:3000/api/profiles"
-# Expect: list of profiles (e.g. BRCA, LUAD)
-```
+- **Case IDs CSV** — GET `/api/cohorts/:id/export/case_ids.csv`; header `case_id`, one row per case.
+- **Files manifest TSV** — POST `/api/cohorts/:id/export/files-manifest` with `data_types`, optional `experimental_strategy`/`access`; returns TSV (file_id, file_name, md5sum, file_size, data_type, experimental_strategy, cases.case_id) and saves to `data/<id>_manifest.tsv`. UI offers presets (RNA-seq, Somatic mutations, WXS BAM).
 
-If you get "connection refused", ensure `npm run dev` is still running and netstat shows both ports LISTENING.
+## 📝 Report
 
-## Usage
+- **Manual only:** The report is generated **only** when you click **Generate Report** (POST /api/cohorts/:id/report). It is never auto-generated after Create Cohort, Run Summary, or Run Survival Pack.
+- **Content:** Rebuilt from latest artifacts on disk: cohort definition, “Artifacts included” (paths + last modified), summary tables (if summary exists), survival section (if survival exists), manifest section (if manifest exists), else “not generated yet”; disclaimer.
+- **Outputs:** `data/<id>_report.md`, `data/<id>_report.html`. Preview (HTML) and Download (.md) links appear after generation; “Report last generated” shows the timestamp.
 
-1. Open http://localhost:3000 in your browser.
-2. Choose a profile (e.g. BRCA, LUAD, COAD); use the search box to filter by name or description.
-3. Optionally set filters: **Stage (exact)** dropdown (from GDC), **Stage group** (I/II/III/IV), **Gender** (male/female).
-4. Click **Create Cohort** → the app shows `n_cases` and the first 10 `case_ids`.
-5. Click **Run Cohort Summary** → the app shows summary stats (n_cases, gender/stage distribution, missingness).
+## 🛣️ Roadmap
 
-Cohort snapshots and summary outputs are stored as JSON files under `/data` (gitignored). No database.
+- Genomics pack (e.g. mutation/expression summary by cohort).
+- Trial matching (match cohort to eligibility criteria).
+- Knowledge graph or cross-cohort comparison.
+- Optional PDF export for reports.
+- More GDC data types in manifest presets.
 
-### Stage filtering
+## Common issues
 
-Stage is no longer free text: the UI loads **stage options** from the API (GET /api/stage-options) for the selected profile and shows a dropdown of exact values (e.g. Stage IIA, Stage IIIB) with counts. Choosing **Stage group** (I/II/III/IV) expands to all matching GDC values for that group so that selecting "II" returns cohorts for Stage II, IIA, IIB, IIC instead of 0. Exact stage and stage group are mutually exclusive; exact stage takes precedence if both are sent.
+- **API port in use (EADDRINUSE):** Set another port: `$env:API_PORT=3002; npm run dev`. The UI proxy uses the same `API_PORT`.
+- **Connection refused:** Ensure `npm run dev` is running and both Vite (3000) and the API (3001 or your `API_PORT`) show LISTENING in `netstat -an | findstr "3000 3001"`.
 
-## API
+## Detailed API
 
-### GET /api/health
+**GET /api/profiles** — Returns profiles from `profiles/*.json`, sorted by name. Add a profile by creating e.g. `profiles/coad.json`: `{"id":"coad","name":"COAD","description":"Colon Adenocarcinoma","gdc_project_id":"TCGA-COAD"}`.
 
-Returns `{ "ok": true }`. Use this to verify the API (and proxy) are up.
+**GET /api/stage-options?profileKey=brca|luad|...** — Stage values and counts (canonical stage) for the profile.
 
-### GET /api/stage-options
+**POST /api/cohorts** — Body: `{ "profileKey": "brca", "filters": { "stage": "Stage IIA", "gender": "female" } }`. Use `stage` (exact) or `stageGroup` ("I"|"II"|"III"|"IV"); stage takes precedence. Returns cohort with `id`, `n_cases`, `case_ids`; saves `data/<id>.json`.
 
-Returns stage values and counts for a profile (from a GDC sample), for building stage dropdowns.
+**POST /api/cohorts/:id/summary** — Computes gender/stage (canonical) and missingness from GDC; saves `data/<id>_summary.json`. Optional debug: `stage_source_counts`.
 
-**Query:** `profileKey` (required) — e.g. `brca`, `luad`.
+**POST /api/cohorts/:id/survival** — Body: `{ "stratify_by": null | "gender" | "stage" }`. Fetches vital_status and days from demographic + diagnoses; returns `km_points`, `n_events`, missingness, debug counts; if stratified, `groups` and `p_value`. Saves `data/<id>_survival.json`. Returns 400 if &lt;10% of cases have OS time.
 
-**Response:** `[{ "value": "Stage IIA", "count": 357 }, ...]` sorted by count descending.
+**Export:** GET `.../export/case_ids.csv`; POST `.../export/files-manifest` with `data_types` (array), optional `experimental_strategy`, `access`.
 
-**Example:**
+**Report:** POST `.../report` rebuilds from disk and returns `{ ok, generatedAt, artifactsIncluded }`. GET `.../report.md` and `.../report.html` serve the saved files (404 if not generated yet).
 
-```powershell
-Invoke-RestMethod -Uri "http://localhost:3000/api/stage-options?profileKey=brca"
-```
-
-### GET /api/profiles
-
-Returns the list of available profiles, sorted alphabetically by name (e.g. BLCA, BRCA, COAD, …).
-
-**Example:**
-
-```powershell
-Invoke-RestMethod -Uri "http://localhost:3000/api/profiles"
-```
-
-### POST /api/cohorts
-
-Creates a cohort from the GDC API and returns a snapshot (filters, `n_cases`, `case_ids`). Optionally filter by `stage`, `stageGroup`, and `gender`.
-
-**Body:**
-
-```json
-{
-  "profileKey": "brca",
-  "filters": {
-    "stage": "Stage IIA",
-    "gender": "female"
-  }
-}
-```
-
-- `profileKey` is required and must match an existing profile id (e.g. `brca`, `luad` from GET /api/profiles). For backward compatibility, `profileId` is accepted as an alias for `profileKey`.
-- **Stage filtering:** Use exact `stage` (e.g. `"Stage IIA"`) for a single value, or use `stageGroup` (`"I"`, `"II"`, `"III"`, `"IV"`) to match all stages in that group (e.g. II → Stage II, IIA, IIB, IIC). If both are provided, `stage` takes precedence. Stage options come from GDC (see GET /api/stage-options).
-
-**Example:**
-
-```powershell
-Invoke-RestMethod -Method Post -Uri "http://localhost:3000/api/cohorts" -ContentType "application/json" -Body '{"profileKey":"brca"}'
-```
-
-With filters:
-
-```powershell
-$body = @{ profileKey = "luad"; filters = @{ gender = "male" } } | ConvertTo-Json
-Invoke-RestMethod -Uri "http://localhost:3000/api/cohorts" -Method Post -Body $body -ContentType "application/json"
-```
-
-**Response:** cohort object with `id`, `n_cases`, `case_ids`, etc. The snapshot is saved under `data/<id>.json`.
-
-### POST /api/cohorts/:id/summary
-
-Computes a cohort summary (n_cases, gender distribution, stage distribution if available, missingness) from GDC and returns it. Result is saved under `data/<id>_summary.json`.
-
-**Example:**
-
-```powershell
-# Replace COHORT_ID with the id returned from POST /api/cohorts (e.g. cohort_1730123456789)
-Invoke-RestMethod -Uri "http://localhost:3000/api/cohorts/COHORT_ID/summary" -Method Post
-```
-
-### POST /api/cohorts/:id/survival (Survival Pack)
-
-Computes Kaplan-Meier overall survival (OS) for the cohort using GDC fields `diagnoses.days_to_death` and `diagnoses.days_to_last_follow_up`. Optionally stratify by `gender` or `stage` (log-rank p-value when exactly 2 groups). Result saved under `data/<id>_survival.json`.
-
-**Body:** `{ "stratify_by": null | "gender" | "stage" }`
-
-**Response:** `n_total`, `n_events`, `missingness`, `km_points` (array of `{ t, s }`), and if stratified: `groups` (each with `name`, `n`, `km_points`), `p_value`.
-
-If fewer than 10% of cases have OS data, the API returns `400` with an error and missingness report (no synthetic results).
-
-**Example:**
-
-```powershell
-Invoke-RestMethod -Uri "http://localhost:3000/api/cohorts/COHORT_ID/survival" -Method Post -ContentType "application/json" -Body '{}'
-$body = '{"stratify_by":"gender"}'; Invoke-RestMethod -Uri "http://localhost:3000/api/cohorts/COHORT_ID/survival" -Method Post -ContentType "application/json" -Body $body
-```
-
-## Exports
-
-One-click exports for an existing cohort (no breaking changes to existing API).
-
-### GET /api/cohorts/:id/export/case_ids.csv
-
-Returns a CSV with header `case_id` and one row per case in the cohort. Open in Excel or use for downstream tools.
-
-**Example (PowerShell; save to file):**
-
-```powershell
-$cohortId = "cohort_1730123456789"
-Invoke-WebRequest -Uri "http://localhost:3000/api/cohorts/$cohortId/export/case_ids.csv" -OutFile "$cohortId_case_ids.csv"
-```
-
-### POST /api/cohorts/:id/export/files-manifest
-
-Queries GDC for files belonging to the cohort’s case_ids and optional filters, then returns a TSV manifest (and saves it under `data/<cohort_id>_manifest.tsv`). Columns: `file_id`, `file_name`, `md5sum`, `file_size`, `data_type`, `experimental_strategy`, `cases.case_id`.
-
-**Body:**
-
-- `data_types` (required, array): e.g. `["Gene Expression Quantification", "Masked Somatic Mutation"]`
-- `experimental_strategy` (optional, array): e.g. `["RNA-Seq", "WXS"]`
-- `access` (optional): `"open"` or `"controlled"`
-
-**Example (PowerShell; save TSV to file):**
-
-```powershell
-$cohortId = "cohort_1730123456789"
-$body = @{ data_types = @("Gene Expression Quantification"); experimental_strategy = @("RNA-Seq") } | ConvertTo-Json
-Invoke-WebRequest -Uri "http://localhost:3000/api/cohorts/$cohortId/export/files-manifest" -Method Post -Body $body -ContentType "application/json" -OutFile "$cohortId_manifest.tsv"
-```
-
-In the UI, use **Export case_ids CSV** and **Export files manifest** in the Cohort card; the manifest dialog lets you choose presets (RNA-seq, Somatic mutations, WXS BAM) and triggers a browser download.
-
-## Report generator
-
-Generate a research-use report (Markdown + printable HTML) for a cohort. The report includes only sections for which data exists: cohort definition, data quality (missingness), summary tables (gender, stage), survival stats (if run), files manifest (if exported), and a disclaimer.
-
-- **GET /api/cohorts/:id/report.md** — builds the report from existing artifacts (cohort snapshot, summary, survival, manifest), saves to `data/<id>_report.md`, and returns the Markdown (download).
-- **GET /api/cohorts/:id/report.html** — same content as printable HTML (open in new tab to print).
-
-In the UI, click **Generate Report** in the Cohort card; after generation, use **Preview (HTML)** and **Download .md**.
+Errors from GDC are returned as 502 with `error` and `message`; the UI shows them in a red banner. No mock data; all numbers from GDC.
 
 ## Project layout
 
-- `server.js` – Express API and GDC client
-- `profiles/` – `brca.json`, `luad.json` (profile definitions)
-- `data/` – cohort snapshots, summary JSON, survival JSON, report .md, and export manifests (gitignored)
-- `src/` – Vite + React UI
-- `index.html`, `vite.config.js` – Vite entry and config (dev on port 3000, host localhost; `/api` proxied to backend)
-
-## Errors
-
-No mock data: every number comes from the GDC API. If a GDC request fails (network or API error), the API returns a `502` with a clear `error` and `message`. The UI shows that message in a red box.
+- `server.js` — Express API, GDC client, report builder
+- `profiles/` — Profile JSON (brca, luad, coad, …); add files to extend
+- `data/` — Cohorts, summaries, survival, manifests, reports (gitignored)
+- `src/App.jsx` — Vite + React UI
+- `docs/images/` — Screenshots (ui-overview.png, ui-survival.png)
