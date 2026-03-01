@@ -1,0 +1,6 @@
+{
+  "id": "brca",
+  "name": "BRCA",
+  "description": "Breast Invasive Carcinoma",
+  "gdc_project_id": "TCGA-BRCA"
+}

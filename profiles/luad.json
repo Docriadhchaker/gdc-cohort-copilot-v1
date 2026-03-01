@@ -1,0 +1,6 @@
+{
+  "id": "luad",
+  "name": "LUAD",
+  "description": "Lung Adenocarcinoma",
+  "gdc_project_id": "TCGA-LUAD"
+}
