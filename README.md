@@ -39,11 +39,11 @@
 
 **Dashboard (controls + cohort + summary)**
 
-![Dashboard overview](docs/images/ui-overview.png)
+![Dashboard overview](docs/ui-preview.png)
 
 **Survival (Kaplan–Meier curve and metrics)**
 
-![Survival pack](docs/images/ui-survival.png)
+![Survival pack](docs/ui-survival.png)
 
 ## 🧪 Quick start
 
